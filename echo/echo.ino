@@ -3,19 +3,29 @@
 //#include TurnSensor.h
 #include <Wire.h>
 #include <Zumo32U4.h>
+#include <ZumoShield.h>
 
 //Serial1 communicates over XBee
 //Serial communicates over USB cable
 Zumo32U4Motors motors;
 Zumo32U4LineSensors lineSensors;
 Zumo32U4ProximitySensors proxSensors;
+LSM303 compass;
 
 //
+//#define sensorThreshold
+#define sensorThresholdDark 100 //Temp need to find out what black is in sensor
+#define CALIBRATION_SAMPLES 70  // Number of compass readings to take when calibrating
+#define CRB_REG_M_2_5GAUSS 0x60 // CRB_REG_M value for magnetometer +/-2.5 gauss full scale
+#define CRA_REG_M_220HZ    0x1C // CRA_REG_M value for magnetometer 220 Hz update rate
+#define SPEED           200 // Maximum motor speed when going straight; variable speed when turning
+#define TURN_SPEED 100 // Base speed when turning (added to variable speed)
 #define NUM_SENSORS 5
-unsigned int lineSensorValues[NUM_SENSORS];
-//
+#define StartX compass.m.x
+#define StartY compass.m.y
 
-uint16_t lineSensorValues[5] = { 0, 0, 0, 0, 0 };
+
+uint16_t lineSensorValues[3] = { 0, 0, 0 };
 
 bool proxLeftActive;
 bool proxFrontActive;
@@ -30,10 +40,22 @@ void setup() {
   Serial.begin(9600);
   //motors.flipLeftMotor(true);
   //motors.flipRightMotor(true);
+// Initiate the Wire library and join the I2C bus as a master
+  Wire.begin();
+  // Initiate LSM303
+  compass.init();
+  // Enables accelerometer and magnetometer
+  compass.enableDefault();
+  compass.writeReg(LSM303::CRB_REG_M, CRB_REG_M_2_5GAUSS); // +/- 2.5 gauss sensitivity to hopefully avoid overflow problems
+  compass.writeReg(LSM303::CRA_REG_M, CRA_REG_M_220HZ);    // 220 Hz compass update rate
+//motors
+//  motors.setLeftSpeed(SPEED);
+//  motors.setRightSpeed(-SPEED);//RIGHT
+//
 
   //sensors
-  lineSensors.initFiveSensors();
-  proxSensors.initFrontSensor();
+  lineSensors.initThreeSensors();
+  proxSensors.initThreeSensors();
    /* After setting up the proximity sensors with one of the
    * methods above, you can also customize their operation: */
   //proxSensors.setPeriod(420);
@@ -72,7 +94,10 @@ void loop() {
         case 'b':
         backwardMoving();
         break;
+        //case 'r':
+        //returnToStart();
     }
+    foundAnyOne();
   }
   static uint16_t lastSampleTime = 0;
   if ((uint16_t)(millis() - lastSampleTime) >= 100)
@@ -109,9 +134,7 @@ void printReadingsToSerial()
     proxRightActive,
     lineSensorValues[0],
     lineSensorValues[1],
-    lineSensorValues[2],
-    lineSensorValues[3],
-    lineSensorValues[4]
+    lineSensorValues[2]
   );
   Serial.println(buffer);
   Serial1.println(buffer);
@@ -147,12 +170,6 @@ uint16_t readSensors()
   return lineSensors.readLine(lineSensorValues);
 }
 
-// Returns true if the sensor is seeing a line.
-// Make sure to call readSensors() before calling this.
-bool aboveLine(uint8_t sensorIndex)
-{
-  return lineSensorValues[sensorIndex] > sensorThreshold;
-}
 
 // Returns true if the sensor is seeing a lot of darkness.
 // Make sure to call readSensors() before calling this.
@@ -178,23 +195,39 @@ void forwardMoving(){
 }
 
 void leftMoving(){
-  motors.setRightSpeed(200);
-  motors.setLeftSpeed(-200);
-  delay(2);
-    uint8_t a = readSensors();
-  if(!aboveLineDark(a)){
-    stopMoving();
+  int32_t tempX = compass.m.x;
+  int32_t tempY = compass.m.y;
+  int32_t newCompassX = tempX - 90;
+  int32_t newCompassY = tempY - 90;
+  while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
+  Serial1.println("Compass X = " +compass.m.x);
+  Serial.println("Compass X = " +compass.m.x);
+  Serial1.println("Compass Y = " +compass.m.y);
+  Serial.println("Compass Y = " +compass.m.y);
+  motors.setRightSpeed(TURN_SPEED);
+  motors.setLeftSpeed(-TURN_SPEED);
+  
   }
+  
+  delay(2);
 }
 
 void rightMoving(){
-  motors.setLeftSpeed(200);
-  motors.setRightSpeed(-200);
-  delay(2);
-    uint8_t a = readSensors();
-  if(!aboveLineDark(a)){
-    stopMoving();
+  int32_t tempX = compass.m.x;
+  int32_t tempY = compass.m.y;
+  int32_t newCompassX = tempX + 90;
+  int32_t newCompassY = tempY + 90;
+  while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
+  Serial1.println("Compass X = " +compass.m.x);
+  Serial.println("Compass X = " +compass.m.x);
+  Serial1.println("Compass Y = " +compass.m.y);
+  Serial.println("Compass Y = " +compass.m.y);
+  motors.setRightSpeed(-TURN_SPEED);
+  motors.setLeftSpeed(TURN_SPEED);
+  
   }
+  
+  delay(2);
 }
 
 void backwardMoving(){
@@ -209,60 +242,51 @@ void backwardMoving(){
 
 void backTrack(){
   }
-
-void turnLeft90(){
-  turnSensorReset();
+//void turnLeft90(){
+  //turnSensorReset();
   // Turn to the left 90 degrees.
-  motors.setSpeeds(-calibrationSpeed, calibrationSpeed);
-  while((int32_t)turnAngle < turnAngle45 * 2)
-  {
-    lineSensors.calibrate();
-    turnSensorUpdate();
-  }
- }
-
-void turnRight90(){
-    turnSensorReset();
+  //motors.setSpeeds(-calibrationSpeed, calibrationSpeed);
+  //while((int32_t)turnAngle < turnAngle45 * 2)
+  //{
+    //lineSensors.calibrate();
+    //turnSensorUpdate();
+  //}
+ //}
+ 
+//void turnRight90(){
+    //turnSensorReset();
   // Turn to the right 90 degrees.
-  motors.setSpeeds(calibrationSpeed, -calibrationSpeed);
-  while((int32_t)turnAngle > -turnAngle45 * 2)
-  {
-    lineSensors.calibrate();
-    turnSensorUpdate();
-  }
-}
+  //motors.setSpeeds(calibrationSpeed, -calibrationSpeed);
+  //while((int32_t)turnAngle > -turnAngle45 * 2)
+  //{
+    //lineSensors.calibrate();
+    //turnSensorUpdate();
+  //}
+//}
 
-void turnSensorReset()
-{
-  gyroLastUpdate = micros();
-  turnAngle = 0;
-}
 
-// Read the gyro and update the angle.  This should be called as
-// frequently as possible while using the gyro to do turns.
-void turnSensorUpdate()
-{
-  // Read the measurements from the gyro.
-  gyro.read();
-  turnRate = gyro.g.z - gyroOffset;
 
-  // Figure out how much time has passed since the last update (dt)
-  uint16_t m = micros();
-  uint16_t dt = m - gyroLastUpdate;
-  gyroLastUpdate = m;
 
-  // Multiply dt by turnRate in order to get an estimation of how
-  // much the robot has turned since the last update.
-  // (angular change = angular velocity * time)
-  int32_t d = (int32_t)turnRate * dt;
 
-  // The units of d are gyro digits times microseconds.  We need
-  // to convert those to the units of turnAngle, where 2^29 units
-  // represents 45 degrees.  The conversion from gyro digits to
-  // degrees per second (dps) is determined by the sensitivity of
-  // the gyro: 0.07 degrees per second per digit.
-  //
-  // (0.07 dps/digit) * (1/1000000 s/us) * (2^29/45 unit/degree)
-  // = 14680064/17578125 unit/(digit*us)
-  turnAngle += (int64_t)d * 14680064 / 17578125;
+
+void foundAnyOne(){
+  // Send IR pulses and read the proximity sensors.
+  proxSensors.read();
+  // Just read the proximity sensors without sending pulses.
+  int psl = proxSensors.readBasicLeft();
+  int psf = proxSensors.readBasicFront();
+  int psr = proxSensors.readBasicRight();
+  char psls[31];
+  char psfs[31];
+  char psrs[31];
+  itoa(psl,psls,31);
+    itoa(psf,psfs,31);
+      itoa(psr,psrs,31);
+  //proxLeftActive = proxSensors.readBasicLeft();
+  //proxFrontActive = proxSensors.readBasicFront();
+  //proxRightActive = proxSensors.readBasicRight();
+  Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
+  
+  //if((proxFrontActive  == ...) || (proxRightActive == ... )||(proxLeftActive == ...)){}
+  printReadingsToSerial();
 }
