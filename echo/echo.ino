@@ -1,17 +1,13 @@
-//#include MazeSolver
-//#include GridMovement.h
-//#include TurnSensor.h
+
 #include <Wire.h>
 #include <Zumo32U4.h>
-#include <ZumoShield.h>
-
 //Serial1 communicates over XBee
 //Serial communicates over USB cable
 Zumo32U4Motors motors;
 Zumo32U4LineSensors lineSensors;
 Zumo32U4ProximitySensors proxSensors;
 LSM303 compass;
-
+Zumo32U4Encoders encoders;
 //
 //#define sensorThreshold
 #define sensorThresholdDark 100 //Temp need to find out what black is in sensor
@@ -64,7 +60,9 @@ void setup() {
   //uint16_t levels[] = { 4, 15, 32, 55, 85, 120 };
   //proxSensors.setBrightnessLevels(levels, sizeof(levels)/2);
   lineSensors.calibrate();
-
+  encoders.init();
+  path[pathLength] = "start";
+  ++pathlength;
   delay(1000);
 }
 
@@ -94,29 +92,11 @@ void loop() {
         case 'b':
         backwardMoving();
         break;
-        //case 'r':
-        //returnToStart();
+        case 'r':
+        returnToStart();
     }
     foundAnyOne();
   }
-  static uint16_t lastSampleTime = 0;
-  if ((uint16_t)(millis() - lastSampleTime) >= 100)
-  {
-    lastSampleTime = millis();
-      // Send IR pulses and read the proximity sensors.
-      proxSensors.read();
-  
-      // Just read the proximity sensors without sending pulses.
-      proxLeftActive = proxSensors.readBasicLeft();
-      proxFrontActive = proxSensors.readBasicFront();
-      proxRightActive = proxSensors.readBasicRight();
-  
-      // Read the line sensors.
-      lineSensors.readCalibrated(lineSensorValues);
-  
-      // Send the results to the LCD and to the serial monitor.
-      printReadingsToSerial();
-  } 
 }
 
 void printReadingsToSerial()
@@ -140,27 +120,7 @@ void printReadingsToSerial()
   Serial1.println(buffer);
 }
 
-void mazeSolve()
-{
-  // Start with an empty path.  We will add and remove entries to
-  // the path as we solve the maze.
-  pathLength = 0;
-  delay(1000);
 
-  while(1)
-  {
-    uint8_t a = readSensors();
-    if(!aboveLineDark(a))
-    {
-      // We found the end of the maze, so we succeeded in solving
-      // the maze.
-      stopMoving();
-      Serial1.println("what to do?");
-      Serial.println("what to do?");
-      break;
-    }
-  }
-}
 
 // Takes calibrated readings of the lines sensors and stores them
 // in lineSensorValues.  Also returns an estimation of the line
@@ -179,19 +139,35 @@ bool aboveLineDark(uint8_t sensorIndex)
 }
 
 void stopMoving(){
+  
+  encoders.getCountsAndResetLeft();
+  encoders.getCountsAndResetRight();
   motors.setLeftSpeed(0);
   motors.setRightSpeed(0);
+  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
+  path[pathLength] = "S";
+  ++pathlength;
+  path[pathLength] = (endNumber);
+  ++pathlength;
   delay(2);
 }
 
 void forwardMoving(){
+  encoders.getCountsAndResetLeft();
+  encoders.getCountsAndResetRight();
   motors.setLeftSpeed(200);
   motors.setRightSpeed(200);
+  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
+  path[pathLength] = "W";
+  ++pathlength;
+  path[pathLength] = (endNumber);
+  ++pathlength;
   delay(2);
   uint8_t a = readSensors();
   if(!aboveLineDark(a)){
     stopMoving();
   }
+
 }
 
 void leftMoving(){
@@ -200,15 +176,21 @@ void leftMoving(){
   int32_t newCompassX = tempX - 90;
   int32_t newCompassY = tempY - 90;
   while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
-  Serial1.println("Compass X = " +compass.m.x);
-  Serial.println("Compass X = " +compass.m.x);
-  Serial1.println("Compass Y = " +compass.m.y);
-  Serial.println("Compass Y = " +compass.m.y);
-  motors.setRightSpeed(TURN_SPEED);
-  motors.setLeftSpeed(-TURN_SPEED);
-  
+    Serial1.println("Compass X = " +compass.m.x);
+    Serial.println("Compass X = " +compass.m.x);
+    Serial1.println("Compass Y = " +compass.m.y);
+    Serial.println("Compass Y = " +compass.m.y);
+    motors.setRightSpeed(TURN_SPEED);
+    motors.setLeftSpeed(-TURN_SPEED);
   }
-  
+  encoders.getCountsAndResetLeft();
+  encoders.getCountsAndResetRight();
+  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
+  ++pathlength;
+  path[pathLength] = "L";
+  ++pathlength;
+  path[pathLength] = (endNumber);
+  ++pathlength;
   delay(2);
 }
 
@@ -226,46 +208,176 @@ void rightMoving(){
   motors.setLeftSpeed(TURN_SPEED);
   
   }
-  
+  encoders.getCountsAndResetLeft();
+  encoders.getCountsAndResetRight();
+  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
+  ++pathlength;
+  path[pathLength] = "R";
+  ++pathlength;
+  path[pathLength] = (endNumber);
+  ++pathlength;
   delay(2);
 }
 
 void backwardMoving(){
+  encoders.getCountsAndResetLeft();
+  encoders.getCountsAndResetRight();
   motors.setRightSpeed(-200);
   motors.setLeftSpeed(-200);
+  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
   delay(2);
-    uint8_t a = readSensors();
+  path[pathLength] = "B";
+  ++pathlength;
+  path[pathLength] = (endNumber);
+  ++pathlength;
+  uint8_t a = readSensors();
   if(!aboveLineDark(a)){
     stopMoving();
   }
 }
 
-void backTrack(){
+void returnToStart(){
+    buzzer.playFromProgramSpace(PSTR("!>c32"));
+    delay(1000);
+
+    for(uint16_t i = pathlength; i > 0; i--)
+  {
+    // Make a turn according to the instruction stored in
+    // path[i].
+    turn(path[i]);    // Follow a line segment until we get to the center of an
+    // intersection.
+    (if !(path[i-1] == "start"))
+      followPath(path[i],path[i - 1]);
   }
-//void turnLeft90(){
-  //turnSensorReset();
-  // Turn to the left 90 degrees.
-  //motors.setSpeeds(-calibrationSpeed, calibrationSpeed);
-  //while((int32_t)turnAngle < turnAngle45 * 2)
-  //{
-    //lineSensors.calibrate();
-    //turnSensorUpdate();
-  //}
- //}
- 
-//void turnRight90(){
-    //turnSensorReset();
-  // Turn to the right 90 degrees.
-  //motors.setSpeeds(calibrationSpeed, -calibrationSpeed);
-  //while((int32_t)turnAngle > -turnAngle45 * 2)
-  //{
-    //lineSensors.calibrate();
-    //turnSensorUpdate();
-  //}
-//}
+}
 
+void turn(char dir)
+{
+  switch(dir)
+  {
+  case:'S':
+    return;
+  case 'B':
+    int32_t tempX = compass.m.x;
+    int32_t tempY = compass.m.y;
+    int32_t newCompassX = tempX + 180;
+    int32_t newCompassY = tempY + 180;
+    while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
+      Serial1.println("Compass X = " +compass.m.x);
+      Serial.println("Compass X = " +compass.m.x);
+      Serial1.println("Compass Y = " +compass.m.y);
+      Serial.println("Compass Y = " +compass.m.y);
+      motors.setRightSpeed(-TURN_SPEED);
+      motors.setLeftSpeed(TURN_SPEED);
+    }
+    sensorIndex = 1;
+    break;
 
+  case 'L':
+    int32_t tempX = compass.m.x;
+    int32_t tempY = compass.m.y;
+    int32_t newCompassX = tempX - 90;
+    int32_t newCompassY = tempY - 90;
+    while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
+      Serial1.println("Compass X = " +compass.m.x);
+      Serial.println("Compass X = " +compass.m.x);
+      Serial1.println("Compass Y = " +compass.m.y);
+      Serial.println("Compass Y = " +compass.m.y);
+      motors.setRightSpeed(TURN_SPEED);
+      motors.setLeftSpeed(-TURN_SPEED);
+      
+    }
+    sensorIndex = 1;
+    break;
 
+  case 'R':
+    int32_t tempX = compass.m.x;
+    int32_t tempY = compass.m.y;
+    int32_t newCompassX = tempX + 90;
+    int32_t newCompassY = tempY + 90;
+    while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
+      Serial1.println("Compass X = " +compass.m.x);
+      Serial.println("Compass X = " +compass.m.x);
+      Serial1.println("Compass Y = " +compass.m.y);
+      Serial.println("Compass Y = " +compass.m.y);
+      motors.setRightSpeed(-TURN_SPEED);
+      motors.setLeftSpeed(TURN_SPEED);
+    }
+    sensorIndex = 3;
+    break;
+
+  default:
+    // This should not happen.
+    return;
+  }
+}
+void followPath(char dir, int lengthGone)
+{
+  switch(dir)
+  {
+  case:'R':
+    return;
+  case:'L':
+    return;
+  case 'B':
+    int startLeft = encoders.getCountsAndResetLeft();
+    int startRight = encoders.getCountsAndResetRight();
+    int endRight = (encoders.getCountsRight());
+    int endLeft = (encoders.getCountsRight());
+    int bothEncoders = (endRight + endLeft)/2;
+    while(bothEncoders < lengthGone){
+        motors.setRightSpeed(100);
+        motors.setLeftSpeed(100);
+        int endRight = (encoders.getCountsRight());
+        int endLeft = (encoders.getCountsRight());
+        int bothEncoders = (endRight + endLeft)/2;
+    }
+    delay(2);
+    break;
+  case:'S':
+   break;
+  case:'W';
+   int startLeft = encoders.getCountsAndResetLeft();
+    int startRight = encoders.getCountsAndResetRight();
+    int endRight = (encoders.getCountsRight());
+    int endLeft = (encoders.getCountsRight());
+    int bothEncoders = (endRight + endLeft)/2;
+    while(bothEncoders < lengthGone){
+        motors.setRightSpeed(100);
+        motors.setLeftSpeed(100);
+        int endRight = (encoders.getCountsRight());
+        int endLeft = (encoders.getCountsRight());
+        int bothEncoders = (endRight + endLeft)/2;
+    }
+    delay(2);
+   break;
+   case:'P'
+      proxSensors.read();
+    // Just read the proximity sensors without sending pulses.
+    int psl = proxSensors.readBasicLeft();
+    int psf = proxSensors.readBasicFront();
+    int psr = proxSensors.readBasicRight();
+    char psls[31];
+    char psfs[31];
+    char psrs[31];
+    itoa(psl,psls,31);
+      itoa(psf,psfs,31);
+        itoa(psr,psrs,31);
+    //proxLeftActive = proxSensors.readBasicLeft();
+    //proxFrontActive = proxSensors.readBasicFront();
+    //proxRightActive = proxSensors.readBasicRight();
+    Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
+  default:
+    // This should not happen.
+    return;
+  }
+}
+
+void turnSensorReset()
+{
+  gyroLastUpdate = micros();
+  turnAngle = 0;
+}
 
 
 
@@ -286,7 +398,14 @@ void foundAnyOne(){
   //proxFrontActive = proxSensors.readBasicFront();
   //proxRightActive = proxSensors.readBasicRight();
   Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
-  
+  encoders.getCountsAndResetLeft();
+  encoders.getCountsAndResetRight();
+  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
+  path[pathLength] = "P";
+  ++pathlength;
+  path[pathLength] = (endNumber);
+  ++pathlength;
   //if((proxFrontActive  == ...) || (proxRightActive == ... )||(proxLeftActive == ...)){}
   printReadingsToSerial();
+  
 }
