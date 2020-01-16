@@ -8,6 +8,7 @@ Zumo32U4LineSensors lineSensors;
 Zumo32U4ProximitySensors proxSensors;
 LSM303 compass;
 Zumo32U4Encoders encoders;
+Zumo32U4Buzzer buzzer;
 //
 //#define sensorThreshold
 #define sensorThresholdDark 100 //Temp need to find out what black is in sensor
@@ -62,7 +63,7 @@ void setup() {
   lineSensors.calibrate();
   encoders.init();
   path[pathLength] = "start";
-  ++pathlength;
+  ++pathLength;
   delay(1000);
 }
 
@@ -92,12 +93,24 @@ void loop() {
         case 'b':
         backwardMoving();
         break;
-        case 'r':
+        case 'h':
         returnToStart();
+        break;
+        case 'c':
+        clearPath();
+        break;
     }
     foundAnyOne();
   }
 }
+
+void clearPath(){
+  for(int i = 0; i<100;i++){
+    path[i]="'\0";
+  }
+  pathLength=0;
+}
+
 
 void printReadingsToSerial()
 {
@@ -139,29 +152,36 @@ bool aboveLineDark(uint8_t sensorIndex)
 }
 
 void stopMoving(){
-  
+    if(path[0] != "start"){
+    path[0] = "start";
+    ++pathLength;
+  }
   encoders.getCountsAndResetLeft();
   encoders.getCountsAndResetRight();
   motors.setLeftSpeed(0);
   motors.setRightSpeed(0);
   int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
   path[pathLength] = "S";
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = (endNumber);
-  ++pathlength;
+  ++pathLength;
   delay(2);
 }
 
 void forwardMoving(){
+  if(path[0] != "start"){
+    path[0] = "start";
+    ++pathLength;
+  }
   encoders.getCountsAndResetLeft();
   encoders.getCountsAndResetRight();
   motors.setLeftSpeed(200);
   motors.setRightSpeed(200);
   int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
   path[pathLength] = "W";
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = (endNumber);
-  ++pathlength;
+  ++pathLength;
   delay(2);
   uint8_t a = readSensors();
   if(!aboveLineDark(a)){
@@ -171,6 +191,10 @@ void forwardMoving(){
 }
 
 void leftMoving(){
+   if(path[0] != "start"){
+    path[0] = "start";
+    ++pathLength;
+  }
   int32_t tempX = compass.m.x;
   int32_t tempY = compass.m.y;
   int32_t newCompassX = tempX - 90;
@@ -186,15 +210,19 @@ void leftMoving(){
   encoders.getCountsAndResetLeft();
   encoders.getCountsAndResetRight();
   int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = "L";
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = (endNumber);
-  ++pathlength;
+  ++pathLength;
   delay(2);
 }
 
 void rightMoving(){
+    if(path[0] != "start"){
+    path[0] = "start";
+    ++pathLength;
+  }
   int32_t tempX = compass.m.x;
   int32_t tempY = compass.m.y;
   int32_t newCompassX = tempX + 90;
@@ -211,15 +239,19 @@ void rightMoving(){
   encoders.getCountsAndResetLeft();
   encoders.getCountsAndResetRight();
   int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = "R";
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = (endNumber);
-  ++pathlength;
+  ++pathLength;
   delay(2);
 }
 
 void backwardMoving(){
+      if(path[0] != "start"){
+    path[0] = "start";
+    ++pathLength;
+  }
   encoders.getCountsAndResetLeft();
   encoders.getCountsAndResetRight();
   motors.setRightSpeed(-200);
@@ -227,9 +259,9 @@ void backwardMoving(){
   int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
   delay(2);
   path[pathLength] = "B";
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = (endNumber);
-  ++pathlength;
+  ++pathLength;
   uint8_t a = readSensors();
   if(!aboveLineDark(a)){
     stopMoving();
@@ -240,28 +272,32 @@ void returnToStart(){
     buzzer.playFromProgramSpace(PSTR("!>c32"));
     delay(1000);
 
-    for(uint16_t i = pathlength; i > 0; i--)
+    for(uint16_t i = pathLength; i > 0; i--)
   {
     // Make a turn according to the instruction stored in
     // path[i].
     turn(path[i]);    // Follow a line segment until we get to the center of an
     // intersection.
-    (if !(path[i-1] == "start"))
+    if( !(path[i-1] == "start"))
       followPath(path[i],path[i - 1]);
   }
 }
 
 void turn(char dir)
 {
+  int32_t tempX;
+  int32_t tempY;
+  int32_t newCompassX;
+  int32_t newCompassY;
   switch(dir)
   {
-  case:'S':
+  case 'S':
     return;
   case 'B':
-    int32_t tempX = compass.m.x;
-    int32_t tempY = compass.m.y;
-    int32_t newCompassX = tempX + 180;
-    int32_t newCompassY = tempY + 180;
+    tempX = compass.m.x;
+    tempY = compass.m.y;
+    newCompassX = tempX + 180;
+    newCompassY = tempY + 180;
     while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
       Serial1.println("Compass X = " +compass.m.x);
       Serial.println("Compass X = " +compass.m.x);
@@ -270,14 +306,13 @@ void turn(char dir)
       motors.setRightSpeed(-TURN_SPEED);
       motors.setLeftSpeed(TURN_SPEED);
     }
-    sensorIndex = 1;
     break;
 
   case 'L':
-    int32_t tempX = compass.m.x;
-    int32_t tempY = compass.m.y;
-    int32_t newCompassX = tempX - 90;
-    int32_t newCompassY = tempY - 90;
+    tempX = compass.m.x;
+    tempY = compass.m.y;
+    newCompassX = tempX - 90;
+    newCompassY = tempY - 90;
     while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
       Serial1.println("Compass X = " +compass.m.x);
       Serial.println("Compass X = " +compass.m.x);
@@ -287,14 +322,13 @@ void turn(char dir)
       motors.setLeftSpeed(-TURN_SPEED);
       
     }
-    sensorIndex = 1;
     break;
 
   case 'R':
-    int32_t tempX = compass.m.x;
-    int32_t tempY = compass.m.y;
-    int32_t newCompassX = tempX + 90;
-    int32_t newCompassY = tempY + 90;
+    tempX = compass.m.x;
+    tempY = compass.m.y;
+    newCompassX = tempX + 90;
+    newCompassY = tempY + 90;
     while((compass.m.x != newCompassX) && (compass.m.y != newCompassY)){
       Serial1.println("Compass X = " +compass.m.x);
       Serial.println("Compass X = " +compass.m.x);
@@ -303,7 +337,6 @@ void turn(char dir)
       motors.setRightSpeed(-TURN_SPEED);
       motors.setLeftSpeed(TURN_SPEED);
     }
-    sensorIndex = 3;
     break;
 
   default:
@@ -313,45 +346,50 @@ void turn(char dir)
 }
 void followPath(char dir, int lengthGone)
 {
+  int startLeft;
+  int startRight;
+  int endRight;
+  int endLeft;
+  int bothEncoders;
   switch(dir)
   {
-  case:'R':
+  case 'R':
     return;
-  case:'L':
+  case 'L':
     return;
   case 'B':
-    int startLeft = encoders.getCountsAndResetLeft();
-    int startRight = encoders.getCountsAndResetRight();
-    int endRight = (encoders.getCountsRight());
-    int endLeft = (encoders.getCountsRight());
-    int bothEncoders = (endRight + endLeft)/2;
+    startLeft = encoders.getCountsAndResetLeft();
+    startRight = encoders.getCountsAndResetRight();
+    endRight = (encoders.getCountsRight());
+    endLeft = (encoders.getCountsRight());
+    bothEncoders = (endRight + endLeft)/2;
     while(bothEncoders < lengthGone){
         motors.setRightSpeed(100);
         motors.setLeftSpeed(100);
-        int endRight = (encoders.getCountsRight());
-        int endLeft = (encoders.getCountsRight());
-        int bothEncoders = (endRight + endLeft)/2;
+        endRight = (encoders.getCountsRight());
+        endLeft = (encoders.getCountsRight());
+        bothEncoders = (endRight + endLeft)/2;
     }
     delay(2);
     break;
-  case:'S':
+  case 'S':
    break;
-  case:'W';
-   int startLeft = encoders.getCountsAndResetLeft();
-    int startRight = encoders.getCountsAndResetRight();
-    int endRight = (encoders.getCountsRight());
-    int endLeft = (encoders.getCountsRight());
-    int bothEncoders = (endRight + endLeft)/2;
+  case 'W':
+   startLeft = encoders.getCountsAndResetLeft();
+    startRight = encoders.getCountsAndResetRight();
+    endRight = (encoders.getCountsRight());
+    endLeft = (encoders.getCountsRight());
+    bothEncoders = (endRight + endLeft)/2;
     while(bothEncoders < lengthGone){
         motors.setRightSpeed(100);
         motors.setLeftSpeed(100);
-        int endRight = (encoders.getCountsRight());
-        int endLeft = (encoders.getCountsRight());
-        int bothEncoders = (endRight + endLeft)/2;
+        endRight = (encoders.getCountsRight());
+        endLeft = (encoders.getCountsRight());
+        bothEncoders = (endRight + endLeft)/2;
     }
     delay(2);
    break;
-   case:'P'
+   case 'P':
       proxSensors.read();
     // Just read the proximity sensors without sending pulses.
     int psl = proxSensors.readBasicLeft();
@@ -366,18 +404,14 @@ void followPath(char dir, int lengthGone)
     //proxLeftActive = proxSensors.readBasicLeft();
     //proxFrontActive = proxSensors.readBasicFront();
     //proxRightActive = proxSensors.readBasicRight();
-    Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
+   // Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
   default:
     // This should not happen.
     return;
   }
 }
 
-void turnSensorReset()
-{
-  gyroLastUpdate = micros();
-  turnAngle = 0;
-}
+
 
 
 
@@ -397,14 +431,14 @@ void foundAnyOne(){
   //proxLeftActive = proxSensors.readBasicLeft();
   //proxFrontActive = proxSensors.readBasicFront();
   //proxRightActive = proxSensors.readBasicRight();
-  Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
+ // Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
   encoders.getCountsAndResetLeft();
   encoders.getCountsAndResetRight();
   int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
   path[pathLength] = "P";
-  ++pathlength;
+  ++pathLength;
   path[pathLength] = (endNumber);
-  ++pathlength;
+  ++pathLength;
   //if((proxFrontActive  == ...) || (proxRightActive == ... )||(proxLeftActive == ...)){}
   printReadingsToSerial();
   
