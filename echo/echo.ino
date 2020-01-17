@@ -32,34 +32,15 @@ char path[100];
 uint8_t pathLength = 0;
 
 void setup() {
-  // put your setup code here, to run once:
   Serial1.begin(9600);
   Serial.begin(9600);
-  //motors.flipLeftMotor(true);
-  //motors.flipRightMotor(true);
-// Initiate the Wire library and join the I2C bus as a master
   Wire.begin();
-  // Initiate LSM303
   compass.init();
-  // Enables accelerometer and magnetometer
   compass.enableDefault();
   compass.writeReg(LSM303::CRB_REG_M, CRB_REG_M_2_5GAUSS); // +/- 2.5 gauss sensitivity to hopefully avoid overflow problems
   compass.writeReg(LSM303::CRA_REG_M, CRA_REG_M_220HZ);    // 220 Hz compass update rate
-//motors
-//  motors.setLeftSpeed(SPEED);
-//  motors.setRightSpeed(-SPEED);//RIGHT
-//
-
-  //sensors
   lineSensors.initThreeSensors();
   proxSensors.initThreeSensors();
-   /* After setting up the proximity sensors with one of the
-   * methods above, you can also customize their operation: */
-  //proxSensors.setPeriod(420);
-  //proxSensors.setPulseOnTimeUs(421);
-  //proxSensors.setPulseOffTimeUs(578);
-  //uint16_t levels[] = { 4, 15, 32, 55, 85, 120 };
-  //proxSensors.setBrightnessLevels(levels, sizeof(levels)/2);
   lineSensors.calibrate();
   encoders.init();
   path[pathLength] = "start";
@@ -100,7 +81,6 @@ void loop() {
         clearPath();
         break;
     }
-    foundAnyOne();
   }
 }
 
@@ -187,7 +167,9 @@ void forwardMoving(){
   if(!aboveLineDark(a)){
     stopMoving();
   }
-
+  if(foundAnyOne() == true){
+    foundSomeone();
+  }
 }
 
 void leftMoving(){
@@ -248,7 +230,7 @@ void rightMoving(){
 }
 
 void backwardMoving(){
-      if(path[0] != "start"){
+   if(path[0] != "start"){
     path[0] = "start";
     ++pathLength;
   }
@@ -266,11 +248,15 @@ void backwardMoving(){
   if(!aboveLineDark(a)){
     stopMoving();
   }
+  if(foundAnyOne() == true){
+    foundSomeone();
+  }
 }
 
 void returnToStart(){
-    buzzer.playFromProgramSpace(PSTR("!>c32"));
-    delay(1000);
+     buzzer.playNote(NOTE_A(4), 2000, 15);
+     delay(200);
+     buzzer.stopPlaying();
 
     for(uint16_t i = pathLength; i > 0; i--)
   {
@@ -390,21 +376,13 @@ void followPath(char dir, int lengthGone)
     delay(2);
    break;
    case 'P':
-      proxSensors.read();
-    // Just read the proximity sensors without sending pulses.
-    int psl = proxSensors.readBasicLeft();
-    int psf = proxSensors.readBasicFront();
-    int psr = proxSensors.readBasicRight();
-    char psls[31];
-    char psfs[31];
-    char psrs[31];
-    itoa(psl,psls,31);
-      itoa(psf,psfs,31);
-        itoa(psr,psrs,31);
-    //proxLeftActive = proxSensors.readBasicLeft();
-    //proxFrontActive = proxSensors.readBasicFront();
-    //proxRightActive = proxSensors.readBasicRight();
-   // Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
+     proxSensors.read();
+     if (proxSensors.countsFrontWithLeftLeds() >= 2 || proxSensors.countsFrontWithRightLeds() >= 2)
+     {
+         buzzer.playNote(NOTE_A(4), 2000, 15);
+         delay(200);
+         buzzer.stopPlaying(); 
+     }
   default:
     // This should not happen.
     return;
@@ -415,31 +393,19 @@ void followPath(char dir, int lengthGone)
 
 
 
-void foundAnyOne(){
-  // Send IR pulses and read the proximity sensors.
-  proxSensors.read();
-  // Just read the proximity sensors without sending pulses.
-  int psl = proxSensors.readBasicLeft();
-  int psf = proxSensors.readBasicFront();
-  int psr = proxSensors.readBasicRight();
-  char psls[31];
-  char psfs[31];
-  char psrs[31];
-  itoa(psl,psls,31);
-    itoa(psf,psfs,31);
-      itoa(psr,psrs,31);
-  //proxLeftActive = proxSensors.readBasicLeft();
-  //proxFrontActive = proxSensors.readBasicFront();
-  //proxRightActive = proxSensors.readBasicRight();
- // Serial1.println("Proximity Sensor Left no IR = " << psls << " Proximity Sensor Front no IR = " << psfs << " Proximity Sensor Right no IR = " << psrs);
-  encoders.getCountsAndResetLeft();
-  encoders.getCountsAndResetRight();
-  int endNumber = (encoders.getCountsLeft() + encoders.getCountsRight())/2;
-  path[pathLength] = "P";
-  ++pathLength;
-  path[pathLength] = (endNumber);
-  ++pathLength;
-  //if((proxFrontActive  == ...) || (proxRightActive == ... )||(proxLeftActive == ...)){}
-  printReadingsToSerial();
-  
+bool foundAnyOne(){
+   proxSensors.read();
+   if (proxSensors.countsFrontWithLeftLeds() >= 2 || proxSensors.countsFrontWithRightLeds() >= 2)
+   {
+      return true;
+   }
+   return false;
+}
+
+void foundSomeone(){
+     path[pathLength] = "P";
+     ++pathLength;
+     buzzer.playNote(NOTE_A(4), 2000, 15);
+     delay(200);
+     buzzer.stopPlaying(); 
 }
